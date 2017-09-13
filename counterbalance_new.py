@@ -12,6 +12,7 @@ class CounterbalancedStratifiedSplit(object):
         self.c = c
         self.n_splits = n_splits
         self.c_type = c_type
+        self.checked_possible = False
 
     def check_possible(self):
 
@@ -135,6 +136,9 @@ class CounterbalancedStratifiedSplit(object):
         if not self.checked_possible:
             self.check_possible()
 
+        if self.c_type == 'categorical':
+            raise(IOError('You don''t need to find a seed to get doubly stratified classes. Just use .split()'))
+        
         X_tmp = self.X[self.subsample_idx]
         y_tmp = self.y[self.subsample_idx]
         c_tmp = self.c[self.subsample_idx]
@@ -167,6 +171,30 @@ class CounterbalancedStratifiedSplit(object):
                 self.seed = seed
                 break
 
+    def split(self):
+        
+        if self.c_type == 'categorical':
+            if not self.checked_possible:
+                self.check_possible()
+            y_new = y[self.subsample_idx]
+            c_new = c[self.subsample_idx]
+            X_new = X[self.subsample_idx,:]
+            
+            # Create y2 to use for StratifiedKFold
+            y2 = np.zeros(y_new.shape[0], dtype=np.int)
+            i = 0
+            for y_class in np.unique(y_new):
+                for c_class in np.unique(c_new):
+                    y2[(y_new == y_class) & (c_new == c_class)] = i
+                    i += 1
+                    
+            # SKF, split, and return splits
+            skf = StratifiedKFold(n_splits=self.n_splits)
+            splits = skf.split(X=X_new, y=y2)
+
+            for (train_idx, test_idx) in splits:
+                yield ((self.subsample_idx[train_idx],
+                        self.subsample_idx[test_idx]))
 
 if __name__ == '__main__':
 
@@ -181,7 +209,27 @@ if __name__ == '__main__':
     data[y == 1, :] += 5.5
     X = data
 
-    css = CounterbalancedStratifiedSplit(X, y, c, n_splits=3,
-                                         c_type='continuous')
-    css.check_possible()
-    css.find_counterbalanced_seed()
+    # Test continuous
+#     css = CounterbalancedStratifiedSplit(X, y, c, n_splits=3,
+#                                          c_type='continuous')
+#     css.check_possible()
+#     css.find_counterbalanced_seed()
+
+    # Test categorical
+    y = np.random.binomial(n=1, p=.5, size=100)
+    c = np.random.binomial(n=2, p=.5, size=100)
+    X = np.random.normal(0, 1, (100, 5))
+    splits = CounterbalancedStratifiedSplit(X=X, y=y, c=c, c_type='categorical').split()
+    
+    for (train_idx, test_idx) in splits:
+        print('\nNew fold...')
+        for i, set_ in enumerate([train_idx, test_idx]):
+            print(['Train set:', 'Test set:'][i])
+            y_set = y[set_]
+            c_set = c[set_]
+
+            for y_class in np.unique(y_set):
+                print('Bincount for y_class: %d' % y_class)
+                idx = y_set == y_class
+                c_sub = c_set[idx]
+                print(np.bincount(c_sub))        

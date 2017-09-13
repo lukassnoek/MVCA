@@ -17,28 +17,31 @@ class CounterbalancedStratifiedSplit(object):
 
         if self.c_type == 'categorical':
 
-            self.subsample_idx = self._check_categorical()
+            self.subsample_idx = self._subsample_categorical()
 
         elif self.c_type == 'continuous':
 
-            self.subsample_idx = self._check_continuous()
+            self.subsample_idx = self._subsample_continuous()
 
         else:
             raise ValueError("Please use ctype='continuous' or "
                              "ctype='categorical'")
 
         self.checked_possible = True
+        new_N = float(len(self.subsample_idx))
+        print("Size of y after subsampling: %i (%.1f percent reduction in "
+              "samples)" % (new_N, (self.y.size - new_N) / self.y.size * 100))
 
-    def _check_continuous(self):
+    def _subsample_continuous(self):
 
         # First, let's do a t-test to check for differences between
         # c | y=0 and c | y=1; thus, only binary c for now
         tstat, pval = ttest_ind(self.c[self.y == 0], self.c[self.y == 1])
-
+        print("Initial pval = %.3f" % pval)
         c_y0 = self.c[self.y == 0]
         c_y1 = self.c[self.y == 1]
 
-        select_idx = self.subsample_idx.copy()
+        select_idx = np.arange(self.y.size)
         idx_c_y0 = select_idx[self.y == 0]
         idx_c_y1 = select_idx[self.y == 1]
 
@@ -53,7 +56,7 @@ class CounterbalancedStratifiedSplit(object):
             idx_c_y1 = np.delete(idx_c_y1, to_drop_c1)
             c_y1 = np.delete(c_y1, to_drop_c1)
 
-            if not c_y1 or not c_y0:
+            if c_y1.size == 1 or c_y0.size == 1:
                 # not possible!
                 raise ValueError("Not possible to subsample!")
 
@@ -62,7 +65,7 @@ class CounterbalancedStratifiedSplit(object):
         print("Subsampled until p(c | y=0 != p(c | y=1)) > 0.05")
         return np.sort(np.concatenate((idx_c_y0, idx_c_y1)))
 
-    def _check_categorical(self):
+    def _subsample_categorical(self):
 
         c_unique = np.unique(self.c)
         y_unique = np.unique(self.y)
@@ -109,6 +112,22 @@ class CounterbalancedStratifiedSplit(object):
         assert(np.all(np.all(bincounts == bincounts[0,:], axis=1)))
         return final_idx
 
+    def _check_counterbalancing(self, y, c):
+
+        if self.c_type == 'continuous':
+            tval, pval = ttest_ind(c[y == 0], c[y == 1])
+            return pval < 0.05
+
+        if self.c_type == 'categorical':
+
+            bincounts = np.zeros((np.unique(y).size, np.unique(c).size))
+            for i, y_class in enumerate(np.unique(y)):
+                bincounts[i, :] = np.bincount(c[y == y_class])
+
+            counterbalanced = np.all(np.all(bincounts == bincounts[0, :],
+                                            axis=1))
+            return not counterbalanced
+
     def find_counterbalanced_seed(self, max_attempts=50000):
         """ Find a seed of Stratified K-Fold that gives counterbalanced
         classes """
@@ -116,6 +135,37 @@ class CounterbalancedStratifiedSplit(object):
         if not self.checked_possible:
             self.check_possible()
 
+        X_tmp = self.X[self.subsample_idx]
+        y_tmp = self.y[self.subsample_idx]
+        c_tmp = self.c[self.subsample_idx]
+
+        lowest_y_count = np.min(np.bincount(y_tmp))
+
+        if lowest_y_count < self.n_splits:
+            raise ValueError("You have to few samples of each class of y for "
+                             "n_splits=%i; highest number of splits you can "
+                             "use is %i" % (self.n_splits, lowest_y_count))
+
+        seeds = np.random.randint(0, high=1e7, size=max_attempts, dtype=int)
+
+        for i, seed in enumerate(seeds):
+            skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True,
+                                  random_state=seed)
+
+            bad_split = False
+            for (train_idx, test_idx) in skf.split(X_tmp, y_tmp):
+
+                this_y, this_c = y_tmp[train_idx], c_tmp[train_idx]
+                bad_split = self._check_counterbalancing(this_y, this_c)
+
+                if bad_split:
+                    print("Not a good split")
+                    break
+
+            if not bad_split:
+                print("Picking seed %i" % seed)
+                self.seed = seed
+                break
 
 
 if __name__ == '__main__':
@@ -126,11 +176,12 @@ if __name__ == '__main__':
 
     n_half = int(n_samp / 2)
     y = np.repeat([0, 1], repeats=n_half)
-    c = np.array([0, 0, 1, 1, 1, 0, 0, 1, 1, 1])
+    c = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]) + np.random.randn(10) / 10000
     data = np.random.randn(n_samp, n_feat)
     data[y == 1, :] += 5.5
     X = data
 
-    css = CounterbalancedStratifiedSplit(X, y, c, n_splits=5,
-                                         c_type='categorical')
+    css = CounterbalancedStratifiedSplit(X, y, c, n_splits=3,
+                                         c_type='continuous')
     css.check_possible()
+    css.find_counterbalanced_seed()

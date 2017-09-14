@@ -20,6 +20,7 @@ class CounterbalancedStratifiedSplit(object):
         self.seed = None
         self.verbose = verbose
         self.allow_smart_stratify = allow_smart_stratify
+        self.ready_to_go = False
 
     def _validate_fold(self, y, c):
 
@@ -41,7 +42,7 @@ class CounterbalancedStratifiedSplit(object):
             bincounts = np.zeros((np.unique(y).size, np.unique(c).size))
             for i, y_class in enumerate(np.unique(y)):
                 bincounts[i, :] = np.bincount(c[y == y_class])
-            print(bincounts)
+
             counterbalanced = np.all(bincounts[0, :] == bincounts[1, :])
             return counterbalanced
 
@@ -63,6 +64,7 @@ class CounterbalancedStratifiedSplit(object):
             print("Current overall %s c/y (pval): "
                   "%.3f (%.3f)" % (stat_word, stat, pval))
 
+        # ToDo: write for-loop here over c/y
         c_y0 = this_c[this_y == 0]
         c_y1 = this_c[this_y == 1]
         idx_c_y0 = self.subsample_idx[this_y == 0]
@@ -131,7 +133,7 @@ class CounterbalancedStratifiedSplit(object):
                    "counterbalanced" % len(self.subsample_idx))
             raise ValueError(msg)
 
-    def _find_counterbalanced_seed(self, max_attempts=1000, z=None):
+    def _find_counterbalanced_seed(self, max_attempts=10, z=None):
         """ Find a seed of Stratified K-Fold that gives counterbalanced
         classes """
 
@@ -140,23 +142,21 @@ class CounterbalancedStratifiedSplit(object):
         X_tmp = self.X[self.subsample_idx]
         lowest_y_count = np.min(np.bincount(y_tmp))
 
-        # size_train = y_tmp.size * (self.n_splits - 1) / self.n_splits
-        #print(c_tmp.mean() / self.n_splits * 100)
+        size_train = y_tmp.size * (self.n_splits - 1) / self.n_splits
         if lowest_y_count < self.n_splits:
-            raise ValueError("You have to few samples of each class of y for "
+            raise ValueError("You have too few samples of each class of y for "
                              "n_splits=%i; highest number of splits you can "
                              "use is %i" % (self.n_splits, lowest_y_count))
 
         seeds = np.random.randint(0, high=1e7, size=max_attempts, dtype=int)
 
         for i, seed in enumerate(seeds):
-            print("Checking seed %i" % seed)
             skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True,
                                   random_state=seed)
 
             to_stratify = y_tmp if z is None else z
-            for (train_idx, test_idx) in skf.split(X_tmp, to_stratify):
-                print(train_idx)
+            for (train_idx, test_idx) in skf.split(X_tmp, y=to_stratify):
+
                 this_y, this_c = y_tmp[train_idx], c_tmp[train_idx]
                 good_split = self._validate_fold(this_y, this_c)
                 if not good_split:
@@ -178,8 +178,7 @@ class CounterbalancedStratifiedSplit(object):
         good_split = self._find_counterbalanced_seed(z=z)
         return good_split
 
-    def split(self, X, y):
-        """ The final idx to output are subsamples of the subsample_idx... """
+    def check_counterbalance_and_subsample(self):
 
         self.subsample_idx = np.arange(self.y.size)
 
@@ -188,16 +187,24 @@ class CounterbalancedStratifiedSplit(object):
             while not found_split:
                 self._subsample()
                 found_split = self._find_counterbalanced_seed()
+
         elif self.c_type == 'categorical':
             self._subsample()
+            this_y = self.y[self.subsample_idx]
+            this_c = self.c[self.subsample_idx]
 
-            try:
-                found_split = self._try_smart_stratify()
-                while not found_split:
-                    found_split = self._find_counterbalanced_seed()
-                print("Found a split using the smart stratification method!")
-            except ValueError:
-                print("Cannot do smart stratify")
+            if self.allow_smart_stratify:
+                try:
+                    found_split = self._try_smart_stratify()
+                    print("Found a split using the smart stratification method!")
+                # while not found_split:
+                #    found_split = self._find_counterbalanced_seed()
+                except ValueError:
+                    print("Cannot do smart stratify")
+                    self.allow_smart_stratify = False
+                    self.z = None
+
+            if not self.allow_smart_stratify:
                 found_split = self._find_counterbalanced_seed()
                 while not found_split:
                     found_split = self._find_counterbalanced_seed()
@@ -208,43 +215,49 @@ class CounterbalancedStratifiedSplit(object):
             print("Size of y after subsampling: %i (%.1f percent reduction in "
                   "samples)" % (new_N, (old_N - new_N) / old_N * 100))
 
-        X_tmp = X[self.subsample_idx]
-        y_tmp = y[self.subsample_idx]
+        self.ready_to_go = True
+
+    def split(self, X, y):
+        """ The final idx to output are subsamples of the subsample_idx... """
+
+        if not self.ready_to_go:
+            raise ValueError("Run the other method first!")
 
         print("Using seed %i" % self.seed)
         skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True,
                               random_state=self.seed)
 
-        to_stratify = y_tmp if self.z is None else self.z
-        for (train_idx, test_idx) in skf.split(X=X_tmp, y=to_stratify):
+        to_stratify = y if self.z is None else self.z
+        for (train_idx, test_idx) in skf.split(X=X, y=to_stratify):
             yield ((train_idx, test_idx))
 
 
 if __name__ == '__main__':
 
-    n_samp = 20
+    n_samp = 200
     n_feat = 5
 
     n_half = int(n_samp / 2)
     y = np.repeat([0, 1], repeats=n_half)
-    c = np.roll(y, 5)
+    c = y + np.random.randn(n_samp)
     X = np.random.randn(n_samp, n_feat)
 
-    METRIC = 'tstat'
-    THRESHOLD = 0.5
-    N_SPLITS = 5
+    METRIC = 'corr'
+    THRESHOLD = 0.05
+    N_SPLITS = 3
 
     css = CounterbalancedStratifiedSplit(X, y, c, n_splits=N_SPLITS,
-                                         c_type='categorical', verbose=True,
+                                         c_type='continuous', verbose=True,
                                          metric=METRIC, threshold=THRESHOLD,
                                          allow_smart_stratify=True)
+
+    css.check_counterbalance_and_subsample()
+    X, y, c = X[css.subsample_idx], y[css.subsample_idx], c[css.subsample_idx]
+
     folds = css.split(X, y)
     for train_idx, test_idx in folds:
         this_c = c[train_idx]
         this_y = y[train_idx]
-        print(train_idx)
-        print(this_y)
-        print(this_c)
         if METRIC == 'tstat':
             stat, pval = ttest_ind(this_c[this_y == 0], this_c[this_y == 1])
         elif METRIC == 'corr':

@@ -1,0 +1,6 @@
+scikit-learn>=0.19.1
+pandas>=0.21.0
+tqdm>=4.15.0
+scipy>=0.19.1
+numpy>=1.13.3
+skbold>=0.4.0

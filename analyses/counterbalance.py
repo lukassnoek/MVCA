@@ -143,18 +143,20 @@ class CounterbalancedStratifiedSplit(object):
         X_tmp = self.X[self.subsample_idx]
 
         to_stratify = y_tmp if self.z is None else self.z
-        lowest_strat_count = np.min(np.bincount(to_stratify))
+        if self.c_type == 'categorical':
+            lowest_strat_count = np.min(np.bincount(to_stratify))
 
-        if lowest_strat_count < self.n_splits:
-            raise ValueError("You have too few samples of each c-y "
-                             "combination to completely counterbalance all "
-                             "your folds with n_splits=%i; highest number of "
-                             "splits you can use is %i" % (self.n_splits,
-                                                           lowest_strat_count))
+            if lowest_strat_count < self.n_splits:
+                raise ValueError("You have too few samples of each c-y "
+                                 "combination to completely counterbalance all "
+                                 "your folds with n_splits=%i; highest number of "
+                                 "splits you can use is %i" % (self.n_splits,
+                                                               lowest_strat_count))
 
         seeds = np.random.randint(0, high=1e7, size=max_attempts, dtype=int)
 
         for i, seed in enumerate(seeds):
+
             skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True,
                                   random_state=seed)
 

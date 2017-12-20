@@ -200,7 +200,7 @@ class CounterbalancedStratifiedSplit(object):
             print("Size of y after subsampling: %i (%.1f percent reduction in "
                   "samples)" % (new_N, (old_N - new_N) / old_N * 100))
 
-    def split(self, X, y):
+    def split(self, X, y, groups=None):
         """ The final idx to output are subsamples of the subsample_idx... """
 
         if self.seed is None:

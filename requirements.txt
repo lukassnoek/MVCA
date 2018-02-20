@@ -1,6 +1,7 @@
-scikit-learn>=0.19.1
-pandas>=0.21.0
-tqdm>=4.15.0
-scipy>=0.19.1
-numpy>=1.13.3
-skbold>=0.4.0
+scikit-learn>=0.19
+pandas>=0.20.0
+seaborn>=0.8.1
+tqdm>=4.19.5
+numpy>=1.14.0
+scipy>=1.0.0
+git+https://github.com/lukassnoek/skbold.git@master

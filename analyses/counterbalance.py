@@ -73,7 +73,7 @@ class CounterbalancedStratifiedSplit(object):
         idx_c_y0 = np.delete(idx_c_y0, to_drop_c0)
         c_y0 = np.delete(c_y0, to_drop_c0)
 
-        to_drop_c1 = c_y1.argmax() if stat > 0 else c_y0.argmin()
+        to_drop_c1 = c_y1.argmax() if stat > 0 else c_y1.argmin()
         idx_c_y1 = np.delete(idx_c_y1, to_drop_c1)
         c_y1 = np.delete(c_y1, to_drop_c1)
 

@@ -97,7 +97,7 @@ def vectorized_partial_corr(arr, c, arr_2D, stack_intercept=True):
     arr_resid = arr - c.dot(np.linalg.lstsq(c, arr, rcond=None)[0])
     arr_2d_resid = arr_2D - c.dot(np.linalg.lstsq(c, arr_2D, rcond=None)[0])
     
-    return vectorized_corr(arr_resid, arr_2D_resid)
+    return vectorized_corr(arr_resid, arr_2d_resid)
 
 
 def vectorized_semipartial_corr(arr, c, arr_2D, which='2D', stack_intercept=True):

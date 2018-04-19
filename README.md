@@ -1,7 +1,12 @@
 # How to control for confounds in decoding analyses of neuroimaging data ("MultiVoxel Confound Analysis", MVCA)
 Code for simulations and empirical analyses for our [article](https://www.biorxiv.org/content/early/2018/03/28/290684) on dealing with confounds in decoding analyses of neuroimaging data. The data (preprocessed VBM/TBSS arrays) can be downloaded using the `download_data.py` script.
 
-We've implemented the (cross-validated) confound regression procedure as a scikit-learn-style "transformer" class, which is implemented in the [skbold](https://github.com/lukassnoek/skbold) package. To use it, install `skbold` (from master) and import it as follows: `from skbold.preproc import ConfoundRegressor`. A minimal example on how to use it is outlined below:
+We've implemented the (cross-validated) confound regression procedure as a scikit-learn-style "transformer" class, which is implemented in the [skbold](https://github.com/lukassnoek/skbold) package. To use it, install `skbold` (from master) and import it as follows: `from skbold.preproc import ConfoundRegressor`.
+
+NEW: we also uploaded the source code for the `ConfoundRegressor` object in this repository at analyses/confounds.py,
+so no need to install `skbold` (feel free to use/modify/adapt/etc).
+
+A minimal example on how to use it is outlined below:
 
 ```python
 import numpy as np

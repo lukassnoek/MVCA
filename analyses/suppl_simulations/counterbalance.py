@@ -73,7 +73,7 @@ class CounterbalancedStratifiedSplit(object):
         idx_c_y0 = np.delete(idx_c_y0, to_drop_c0)
         c_y0 = np.delete(c_y0, to_drop_c0)
 
-        to_drop_c1 = c_y1.argmax() if stat > 0 else c_y0.argmin()
+        to_drop_c1 = c_y1.argmax() if stat > 0 else c_y1.argmin()
         idx_c_y1 = np.delete(idx_c_y1, to_drop_c1)
         c_y1 = np.delete(c_y1, to_drop_c1)
 
@@ -143,18 +143,20 @@ class CounterbalancedStratifiedSplit(object):
         X_tmp = self.X[self.subsample_idx]
 
         to_stratify = y_tmp if self.z is None else self.z
-        lowest_strat_count = np.min(np.bincount(to_stratify))
+        if self.c_type == 'categorical':
+            lowest_strat_count = np.min(np.bincount(to_stratify))
 
-        if lowest_strat_count < self.n_splits:
-            raise ValueError("You have too few samples of each c-y "
-                             "combination to completely counterbalance all "
-                             "your folds with n_splits=%i; highest number of "
-                             "splits you can use is %i" % (self.n_splits,
-                                                           lowest_strat_count))
+            if lowest_strat_count < self.n_splits:
+                raise ValueError("You have too few samples of each c-y "
+                                 "combination to completely counterbalance all "
+                                 "your folds with n_splits=%i; highest number of "
+                                 "splits you can use is %i" % (self.n_splits,
+                                                               lowest_strat_count))
 
         seeds = np.random.randint(0, high=1e7, size=max_attempts, dtype=int)
 
         for i, seed in enumerate(seeds):
+
             skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True,
                                   random_state=seed)
 
@@ -198,7 +200,7 @@ class CounterbalancedStratifiedSplit(object):
             print("Size of y after subsampling: %i (%.1f percent reduction in "
                   "samples)" % (new_N, (old_N - new_N) / old_N * 100))
 
-    def split(self, X, y):
+    def split(self, X, y, groups=None):
         """ The final idx to output are subsamples of the subsample_idx... """
 
         if self.seed is None:

@@ -13,7 +13,6 @@ from sklearn.model_selection import cross_val_score
 from sklearn.svm import SVC
 from sklearn.pipeline import make_pipeline
 from scipy.stats import pearsonr
-from tqdm import tqdm_notebook
 from confounds import ConfoundRegressor
 
 
@@ -49,7 +48,7 @@ class FmriData:
         no confound is simulated.
     """
 
-    def __init__(self, P=2, I=20, I_dur=2, ISIs=(4, 5, 6, 7), TR=2, K=(3, 3),
+    def __init__(self, P=2, I=20, I_dur=2, ISIs=(4, 5, 6, 7), TR=2, K=(3, 3), R=10,
                  ar1_rho=0.5, smoothness=2, noise_factor=1, cond_means=None, cond_stds=None,
                  conf_params=None, single_trial=True):
         """ Initializes FmriData object. """
@@ -60,6 +59,7 @@ class FmriData:
         self.ISIs = ISIs
         self.TR = TR
         self.K = K
+        self.R = R
         self.ar1_rho = ar1_rho
         self.smoothness=smoothness
         self.noise_factor = noise_factor
@@ -110,6 +110,10 @@ class FmriData:
 
         weight = 0.0001
         desired_corr = self.conf_params['corr']
+
+        if not self.single_trial:
+            conds = np.tile([0, 1], self.R)
+
         conf = conds * weight + np.random.normal(0, 1, conds.size)
         this_corr = pearsonr(conf, conds)[0]
         while np.abs(this_corr - desired_corr) > 0.01:
@@ -118,6 +122,7 @@ class FmriData:
             weight += 0.0001
 
         conf = (conf - conf.min()) / (conf.max() - conf.min())
+
         return conf
 
     def _generate_X(self):
@@ -166,12 +171,27 @@ class FmriData:
         # and add to X to take care of convolution (to be used later when "controlling"
         # for its influence)
         if self.conf_params is not None:
-            conf = self._generate_conf(conds)
+            if self.conf is None:
+                conf = self._generate_conf(conds)
+                self.run_iter = 0
+                self.conf = conf
+            else:
+                conf = self.conf  # for run-wise
+                self.run_iter += 2
         else:
             conf = np.zeros(conds.size)
+            self.conf = conf
+            self.run_iter = 0
 
         conf_pred = np.zeros(run_dur * osf)
-        conf_pred[X.sum(axis=1) != 0] = np.repeat(conf, repeats=osf)
+        if self.single_trial:
+            conf_pred[X.sum(axis=1) != 0] = np.repeat(conf, repeats=osf)
+        else:
+            for condition in range(self.P):
+                n_trials = np.sum(X[:, condition] != 0)
+                this_value = conf[self.run_iter + condition]
+                conf_pred[X[:, condition] != 0] = np.repeat(this_value, repeats=n_trials)
+
         X = np.c_[X, conf_pred]
 
         # Convolve regressors with HRF
@@ -183,7 +203,6 @@ class FmriData:
 
         self.X = X
         self.conds = conds
-        self.conf = conf
 
     def _generate_y(self):
         """ Generate signals (y). """
@@ -389,29 +408,31 @@ def stack_runs(generator, R=10, control_for_conf=False, aggressive=False, smooth
         all_betas.append(betas)
         all_stderrs.append(stderrs)
         all_tvals.append(tvals)
-        all_conf.append([np.mean(generator.conf[conds == i]) for i in range(generator.P)])
+        all_conf.append(fmri_gen.conf)
 
     betas = np.vstack(all_betas)
     stderrs = np.vstack(all_stderrs)
     tvals = np.vstack(all_tvals)
-    conf = np.concatenate(all_conf)
 
     if generator.single_trial:
         target = np.tile(conds, R)
         group = np.repeat(conds, R)
+        conf = np.concatenate(all_conf)
     else:
         target = np.tile(np.arange(generator.P), R)
         group = np.repeat(np.arange(generator.P), R)
+        conf = fmri_gen.conf
 
     return betas, stderrs, tvals, target, group, conf
+
 
 default_pipe = make_pipeline(StandardScaler(), SVC(kernel='linear'))
 smooth_kernel = [0, 1, 2, 3, 4]
 results = dict(acc=[], kernel=[], method=[], corr=[], analysis=[])
 for i, sigma in tqdm(enumerate(smooth_kernel), desc='smooth'):
 
-    for ii, corr in tqdm(enumerate(np.arange(0, 1.05, 0.2)), desc='corr'):
-        iters = 25
+    for ii, corr in tqdm(enumerate(np.arange(0, 1.05, 0.1)), desc='corr'):
+        iters = 100
 
         for ii in range(iters):
             fmri_gen = FmriData(P=2, I=40, I_dur=1, ISIs=[4,5], TR=2,
@@ -502,4 +523,3 @@ for i, sigma in tqdm(enumerate(smooth_kernel), desc='smooth'):
 df_CVCR_sm = pd.DataFrame(results)
 df_CVCR_sm['corr'] = df_CVCR_sm['corr'].round(1)
 df_CVCR_sm.to_csv('autocorr_results.tsv', sep='\t', index=False)
-

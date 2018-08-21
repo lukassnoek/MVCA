@@ -24,7 +24,6 @@ from scipy.stats import pearsonr
 from tqdm import tqdm
 
 from copy import deepcopy
-from matplotlib_venn import venn3
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -560,7 +559,7 @@ class CounterbalancedStratifiedSplitRandom(object):
         # First, let's do a t-test to check for differences between
         # c | y=0 and c | y=1; thus, only binary c for now
         self.subsample_idx = np.arange(self.y.size)
-        amount = int(1 + np.floor(iteration / 1000))
+        amount = int(1 + np.floor(iteration / 10000))
         this_c = self.c[self.subsample_idx]
         this_y = self.y[self.subsample_idx]
 
@@ -854,6 +853,6 @@ if __name__ == '__main__':
 
     results_gen_sim_df = pd.concat(results_gen_sim)
     results_corrs_gen_sim_df = pd.concat(results_corr_gen_sim)
-    results_gen_sim_df.to_csv('results_gen_sim_random1000.tsv', sep='\t', index=False)
-    results_corrs_gen_sim_df.to_csv('results_corrs_random1000.tsv', sep='\t', index=False)
+    results_gen_sim_df.to_csv('results_gen_sim_random.tsv', sep='\t', index=False)
+    results_corrs_gen_sim_df.to_csv('results_corrs_random.tsv', sep='\t', index=False)
 
